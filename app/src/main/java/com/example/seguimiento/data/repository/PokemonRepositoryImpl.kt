@@ -51,11 +51,11 @@ class PokemonRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getPokemonDetail(id: Int): Pokemon? {
-        // Try local first
+        // Primero intenta desde la BD local
         val local = dao.getPokemonById(id)
         if (local != null) return local.toDomain()
 
-        // Fallback to remote
+        // Fallback a la API remota
         return try {
             val detail = api.getPokemonDetail(id.toString())
             val species = try { api.getPokemonSpecies(id.toString()) } catch (e: Exception) { null }
@@ -64,6 +64,39 @@ class PokemonRepositoryImpl @Inject constructor(
             entity.toDomain()
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * Endpoint 4: GET /type/{typeName}
+     * Obtiene la lista de pokémon del tipo desde la API, luego para cada uno
+     * que no esté en la BD local llama a /pokemon/{id} y /pokemon-species/{id}
+     * para obtener el detalle completo y persistirlo en Room.
+     */
+    override suspend fun fetchAndCachePokemonByType(typeName: String) {
+        try {
+            val typeResponse = api.getPokemonByType(typeName)
+            // Tomar los primeros 40 para no saturar la API
+            val toFetch = typeResponse.pokemon.take(40)
+            val entities = toFetch.mapNotNull { entry ->
+                val name = entry.pokemon.name
+                // Extraer ID de la URL para verificar si ya existe en BD
+                val idFromUrl = entry.pokemon.url.trimEnd('/').substringAfterLast('/').toIntOrNull()
+                // Si ya está en BD, no volver a descargar
+                if (idFromUrl != null && dao.getPokemonById(idFromUrl) != null) return@mapNotNull null
+                try {
+                    val detail = api.getPokemonDetail(name)
+                    val species = try { api.getPokemonSpecies(name) } catch (e: Exception) { null }
+                    detail.toEntity(species, -1)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (entities.isNotEmpty()) {
+                dao.insertAll(entities)
+            }
+        } catch (e: Exception) {
+            // Si falla la red, los datos locales ya están disponibles
         }
     }
 

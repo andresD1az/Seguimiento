@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +24,8 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -67,6 +67,7 @@ fun PokemonListScreen(
     val searchType by viewModel.searchType.collectAsStateWithLifecycle()
     val isFiltering by viewModel.isFiltering.collectAsStateWithLifecycle()
     val filteredPokemon by viewModel.filteredPokemon.collectAsStateWithLifecycle()
+    val isLoadingType by viewModel.isLoadingType.collectAsStateWithLifecycle()
     val pagedPokemon = viewModel.pagedPokemon.collectAsLazyPagingItems()
 
     var typeDropdownExpanded by remember { mutableStateOf(false) }
@@ -94,6 +95,14 @@ fun PokemonListScreen(
                 .padding(paddingValues)
         ) {
             ConnectivityBanner(isOnline = isOnline)
+
+            // Indicador de carga al buscar por tipo desde la API
+            if (isLoadingType) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFCC0000)
+                )
+            }
 
             // Search filters
             Column(
@@ -130,7 +139,7 @@ fun PokemonListScreen(
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeDropdownExpanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor()
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(
                         expanded = typeDropdownExpanded,

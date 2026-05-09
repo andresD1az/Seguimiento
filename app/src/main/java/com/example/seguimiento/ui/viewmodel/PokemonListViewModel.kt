@@ -19,12 +19,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class PokemonListViewModel @Inject constructor(
     private val repository: PokemonRepository,
-    networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     // Network state
@@ -38,6 +39,10 @@ class PokemonListViewModel @Inject constructor(
     private val _searchType = MutableStateFlow("")
     val searchType: StateFlow<String> = _searchType.asStateFlow()
 
+    // Loading state for type fetch
+    private val _isLoadingType = MutableStateFlow(false)
+    val isLoadingType: StateFlow<Boolean> = _isLoadingType.asStateFlow()
+
     // Whether filter mode is active
     val isFiltering: StateFlow<Boolean> = combine(_searchName, _searchType) { name, type ->
         name.isNotBlank() || type.isNotBlank()
@@ -48,7 +53,7 @@ class PokemonListViewModel @Inject constructor(
         .getPokemonPaged()
         .cachedIn(viewModelScope)
 
-    // Filtered results (used when filtering)
+    // Filtered results (used when filtering) — reads from local DB
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     val filteredPokemon: StateFlow<List<PokemonSummary>> = combine(
         _searchName.debounce(300),
@@ -63,8 +68,22 @@ class PokemonListViewModel @Inject constructor(
         _searchName.value = query
     }
 
+    /**
+     * Cuando el usuario selecciona un tipo:
+     * 1. Actualiza el filtro local inmediatamente (la UI reacciona al Flow de la BD)
+     * 2. Si hay conexión, llama al Endpoint 4 (/type/{typeName}) para traer
+     *    pokémon de ese tipo desde la API y persistirlos en Room.
+     *    Luego el Flow de la BD se actualiza automáticamente.
+     */
     fun onSearchTypeChange(type: String) {
         _searchType.value = type
+        if (type.isNotBlank() && networkMonitor.isCurrentlyOnline()) {
+            viewModelScope.launch {
+                _isLoadingType.value = true
+                repository.fetchAndCachePokemonByType(type)
+                _isLoadingType.value = false
+            }
+        }
     }
 
     fun clearFilters() {
